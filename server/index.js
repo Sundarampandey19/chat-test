@@ -2,9 +2,9 @@ import express from "express";
 import { Server } from "socket.io";
 import { createServer } from "http";
 import cors from "cors";
+import redisClient from "./redisClient.js";
 
 
-const secretKeyJWT = "asdasdsadasdasdasdsa";
 const port = 3000;
 
 const app = express();
@@ -29,6 +29,16 @@ app.get("/", (req, res) => {
   res.send("Hello World!");
 });
 
+(async () => {
+  const redisSubscriber = redisClient.duplicate();
+  await redisSubscriber.connect();  // Connect the subscriber
+
+  redisSubscriber.subscribe("chat-channel", (message) => {
+    // Parse the message and send it to the relevant room
+    const { room, message: chatMessage } = JSON.parse(message);
+    io.to(room).emit("receive-message", chatMessage);
+    console.log(`Message from Redis: ${chatMessage} in room: ${room}`);
+  });
 
 
 
@@ -37,7 +47,8 @@ io.on("connection", (socket) => {
   
     socket.on("message", ({ room, message }) => {
       console.log({ room, message });
-      socket.to(room).emit("receive-message", message);
+      redisClient.publish("chat-channel", JSON.stringify({ room, message }));
+      // socket.to(room).emit("receive-message", message);
     });
   
     socket.on("join-room", (room) => {
@@ -60,3 +71,4 @@ io.on("connection", (socket) => {
 server.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
+})();
